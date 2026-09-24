@@ -17,7 +17,7 @@ from telegram.ext import (
 # ──────────────────────────────────────────────
 # CONFIG
 # ──────────────────────────────────────────────
-TOKEN = "YOUR_BOT_TOKEN_HERE"          # ← put your bot token here
+TOKEN = "8843510657:AAGzWuoFgxxMcDsr-DKhHLqA1ZX8nZpa37Y"          # ← put your bot token here
 ADMIN_ID = None                        # optional: your Telegram user ID
 
 # Game constants
