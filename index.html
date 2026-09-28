@@ -17,58 +17,52 @@
       min-height: 100vh;
       overflow: hidden;
       touch-action: none;
+      user-select: none;
     }
     h1 {
-      font-size: 1.6rem;
-      margin-bottom: 6px;
+      font-size: 1.5rem;
+      margin-bottom: 4px;
       background: linear-gradient(90deg, #7af, #f7a, #7af);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
     #ui {
       display: flex;
-      gap: 24px;
-      margin-bottom: 10px;
-      font-size: 1.15rem;
+      gap: 18px;
+      margin-bottom: 8px;
+      font-size: 1.05rem;
       font-weight: 600;
+      flex-wrap: wrap;
+      justify-content: center;
     }
+    #ui span { color: #8cf; }
     #game-container {
       position: relative;
       border: 3px solid #3a5a9a;
       border-radius: 12px;
-      box-shadow: 0 0 40px rgba(80,140,255,0.3);
+      box-shadow: 0 0 40px rgba(80,140,255,0.35);
       background: #020208;
     }
-    canvas {
-      display: block;
-      border-radius: 9px;
-    }
+    canvas { display: block; border-radius: 9px; }
     #overlay {
       position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.75);
+      inset: 0;
+      background: rgba(0,0,0,0.8);
       display: none;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       border-radius: 9px;
-      z-index: 10;
+      z-index: 20;
+      text-align: center;
+      padding: 20px;
     }
-    #overlay.show {
-      display: flex;
-    }
-    #overlay h2 {
-      font-size: 1.8rem;
-      margin-bottom: 8px;
-      color: #ff6b6b;
-    }
-    #overlay p {
-      font-size: 1.2rem;
-      margin-bottom: 20px;
-      color: #aef;
-    }
+    #overlay.show { display: flex; }
+    #overlay h2 { font-size: 1.7rem; color: #ff6b6b; margin-bottom: 6px; }
+    #overlay p { font-size: 1.15rem; color: #aef; margin: 4px 0; }
     .btn {
-      padding: 14px 36px;
+      margin-top: 18px;
+      padding: 14px 38px;
       font-size: 1.2rem;
       background: linear-gradient(90deg, #2060c0, #40a0ff);
       border: none;
@@ -78,12 +72,11 @@
       box-shadow: 0 0 25px rgba(60,140,255,0.6);
       font-weight: 600;
     }
-    .btn:active { transform: scale(0.96); }
     .controls {
-      margin-top: 12px;
+      margin-top: 10px;
       text-align: center;
-      color: #8af;
-      font-size: 0.9rem;
+      color: #7af;
+      font-size: 0.85rem;
     }
   </style>
 </head>
@@ -91,120 +84,185 @@
   <h1>🌌 COSMIC FLIPPER</h1>
   <div id="ui">
     <div>Score: <span id="score">0</span></div>
+    <div>High: <span id="highScore">0</span></div>
     <div>Lives: <span id="lives">3</span></div>
+    <div>Combo: <span id="combo">x1</span></div>
   </div>
 
   <div id="game-container">
     <canvas id="canvas" width="400" height="600"></canvas>
-
-    <!-- Game Over Overlay -->
     <div id="overlay">
       <h2>💥 ASTEROID LOST</h2>
       <p>Final Score: <span id="finalScore">0</span></p>
+      <p>High Score: <span id="finalHigh">0</span></p>
       <button class="btn" id="restartBtn">Play Again</button>
     </div>
   </div>
 
   <div class="controls">
-    Tap sides to flip • Tap center to launch
+    Tap sides = Flip • Tap center = Launch
   </div>
 
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const scoreEl = document.getElementById('score');
+    const highScoreEl = document.getElementById('highScore');
     const livesEl = document.getElementById('lives');
+    const comboEl = document.getElementById('combo');
     const overlay = document.getElementById('overlay');
     const finalScoreEl = document.getElementById('finalScore');
+    const finalHighEl = document.getElementById('finalHigh');
     const restartBtn = document.getElementById('restartBtn');
+
+    // Persistent High Score
+    let highScore = parseInt(localStorage.getItem('cosmicHighScore') || '0');
+    highScoreEl.textContent = highScore;
 
     let score = 0;
     let lives = 3;
+    let combo = 1;
     let gameOver = false;
-    let ballLaunched = false;
+    let ballSave = false;
+    let ballSaveTimer = 0;
+    let multiball = false;
+    let skillShotActive = true;
 
-    const ball = { x: 200, y: 520, vx: 0, vy: 0, radius: 9 };
+    // Balls (support multiball)
+    let balls = [{ x: 200, y: 520, vx: 0, vy: 0, radius: 9, launched: false }];
 
-    const leftFlipper = { x: 110, y: 520, angle: 0.4, targetAngle: 0.4, length: 70, active: false };
-    const rightFlipper = { x: 290, y: 520, angle: -0.4, targetAngle: -0.4, length: 70, active: false };
+    const leftFlipper = { x: 110, y: 520, angle: 0.45, targetAngle: 0.45, length: 72, active: false };
+    const rightFlipper = { x: 290, y: 520, angle: -0.45, targetAngle: -0.45, length: 72, active: false };
 
+    // Bumpers
     const bumpers = [
-      { x: 120, y: 180, r: 28, color: '#e8a838', points: 50 },
-      { x: 280, y: 160, r: 22, color: '#c0c0c0', points: 40 },
-      { x: 200, y: 280, r: 32, color: '#222', points: 100 },
-      { x: 90,  y: 340, r: 20, color: '#4a9eff', points: 30 },
-      { x: 310, y: 320, r: 18, color: '#ff5533', points: 30 },
-      { x: 200, y: 120, r: 16, color: '#ffcc00', points: 60 }
+      { x: 115, y: 170, r: 26, color: '#e8a838', points: 50, flash: 0 },
+      { x: 285, y: 155, r: 22, color: '#ccc', points: 40, flash: 0 },
+      { x: 200, y: 260, r: 30, color: '#222', points: 100, flash: 0 },
+      { x: 85,  y: 330, r: 18, color: '#4a9eff', points: 30, flash: 0 },
+      { x: 315, y: 310, r: 18, color: '#ff5533', points: 30, flash: 0 },
+      { x: 200, y: 110, r: 16, color: '#ffcc00', points: 80, flash: 0 }
     ];
 
-    const stars = Array.from({length: 120}, () => ({
+    // Drop targets
+    const targets = [
+      { x: 60, y: 420, w: 18, h: 28, hit: false },
+      { x: 90, y: 420, w: 18, h: 28, hit: false },
+      { x: 120, y: 420, w: 18, h: 28, hit: false }
+    ];
+
+    const stars = Array.from({length: 110}, () => ({
       x: Math.random() * 400,
       y: Math.random() * 600,
-      s: Math.random() * 1.8 + 0.3
+      s: Math.random() * 1.6 + 0.3
     }));
 
-    const gravity = 0.18;
-    const friction = 0.995;
-    const bounce = 0.75;
+    const gravity = 0.19;
+    const friction = 0.997;
+    const bounce = 0.78;
 
-    function resetBall() {
-      ball.x = 200;
-      ball.y = 520;
-      ball.vx = 0;
-      ball.vy = 0;
-      ballLaunched = false;
+    function updateHighScore() {
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('cosmicHighScore', highScore);
+        highScoreEl.textContent = highScore;
+      }
+    }
+
+    function resetBall(b) {
+      b.x = 200;
+      b.y = 520;
+      b.vx = 0;
+      b.vy = 0;
+      b.launched = false;
     }
 
     function launchBall() {
-      if (ballLaunched || gameOver) return;
-      ballLaunched = true;
-      ball.vx = (Math.random() - 0.5) * 3;
-      ball.vy = -14 - Math.random() * 3;
+      if (gameOver) return;
+      const b = balls[0];
+      if (b.launched) return;
+      b.launched = true;
+      b.vx = (Math.random() - 0.5) * 2.5;
+      b.vy = -15.5;
+      ballSave = true;
+      ballSaveTimer = 180; // \~3 seconds
+      skillShotActive = true;
+    }
+
+    function addScore(points) {
+      score += Math.floor(points * combo);
+      scoreEl.textContent = score;
+      combo = Math.min(combo + 0.25, 5);
+      comboEl.textContent = 'x' + combo.toFixed(1);
+      updateHighScore();
     }
 
     function loseLife() {
+      if (ballSave) {
+        // Ball save – return ball
+        resetBall(balls[0]);
+        ballSave = false;
+        return;
+      }
       lives--;
       livesEl.textContent = lives;
+      combo = 1;
+      comboEl.textContent = 'x1';
+      multiball = false;
+      balls = [{ x: 200, y: 520, vx: 0, vy: 0, radius: 9, launched: false }];
+
       if (lives <= 0) {
         gameOver = true;
         finalScoreEl.textContent = score;
+        finalHighEl.textContent = highScore;
         overlay.classList.add('show');
-      } else {
-        resetBall();
       }
     }
 
     function restartGame() {
       score = 0;
       lives = 3;
+      combo = 1;
       gameOver = false;
+      multiball = false;
+      ballSave = false;
+      skillShotActive = true;
       scoreEl.textContent = 0;
       livesEl.textContent = 3;
+      comboEl.textContent = 'x1';
       overlay.classList.remove('show');
-      resetBall();
+      balls = [{ x: 200, y: 520, vx: 0, vy: 0, radius: 9, launched: false }];
+      targets.forEach(t => t.hit = false);
     }
 
-    function checkBumperCollision(b) {
+    function checkBumper(b, ball) {
       const dx = ball.x - b.x;
       const dy = ball.y - b.y;
       const dist = Math.sqrt(dx*dx + dy*dy);
       if (dist < ball.radius + b.r) {
         const overlap = ball.radius + b.r - dist;
-        const nx = dx / dist;
-        const ny = dy / dist;
+        const nx = dx / dist || 0;
+        const ny = dy / dist || 0;
         ball.x += nx * overlap;
         ball.y += ny * overlap;
         const dot = ball.vx * nx + ball.vy * ny;
-        ball.vx -= 2 * dot * nx;
-        ball.vy -= 2 * dot * ny;
-        ball.vx *= 1.1;
-        ball.vy *= 1.1;
-        score += b.points;
-        scoreEl.textContent = score;
+        ball.vx -= 2.1 * dot * nx;
+        ball.vy -= 2.1 * dot * ny;
+        ball.vx *= 1.15;
+        ball.vy *= 1.15;
+        b.flash = 8;
+        addScore(b.points);
+
+        // Multiball chance on black hole
+        if (b.points === 100 && !multiball && Math.random() < 0.25) {
+          multiball = true;
+          balls.push({ x: 200, y: 200, vx: 3, vy: -4, radius: 9, launched: true });
+          balls.push({ x: 200, y: 200, vx: -3, vy: -3, radius: 9, launched: true });
+        }
       }
     }
 
-    function checkFlipper(f, isLeft) {
+    function checkFlipper(f, isLeft, ball) {
       const cos = Math.cos(f.angle);
       const sin = Math.sin(f.angle);
       const endX = f.x + cos * f.length * (isLeft ? 1 : -1);
@@ -216,43 +274,83 @@
       const dx = ball.x - closestX;
       const dy = ball.y - closestY;
       const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist < ball.radius + 6) {
+      if (dist < ball.radius + 7) {
         const nx = dx / (dist || 1);
         const ny = dy / (dist || 1);
-        ball.x = closestX + nx * (ball.radius + 6);
-        ball.y = closestY + ny * (ball.radius + 6);
+        ball.x = closestX + nx * (ball.radius + 7);
+        ball.y = closestY + ny * (ball.radius + 7);
         const dot = ball.vx * nx + ball.vy * ny;
-        ball.vx -= 1.8 * dot * nx;
-        ball.vy -= 1.8 * dot * ny;
+        ball.vx -= 1.9 * dot * nx;
+        ball.vy -= 1.9 * dot * ny;
         if (f.active) {
-          ball.vy -= 6;
-          ball.vx += isLeft ? -2 : 2;
+          ball.vy -= 8.5;
+          ball.vx += isLeft ? -2.8 : 2.8;
         }
       }
+    }
+
+    function checkTargets(ball) {
+      targets.forEach(t => {
+        if (t.hit) return;
+        if (ball.x > t.x && ball.x < t.x + t.w && ball.y > t.y && ball.y < t.y + t.h) {
+          t.hit = true;
+          addScore(75);
+          // Skill shot
+          if (skillShotActive) {
+            addScore(150);
+            skillShotActive = false;
+          }
+          // All targets down → big bonus + reset
+          if (targets.every(tg => tg.hit)) {
+            addScore(400);
+            targets.forEach(tg => tg.hit = false);
+          }
+        }
+      });
     }
 
     function update() {
       if (gameOver) return;
 
-      leftFlipper.angle += (leftFlipper.targetAngle - leftFlipper.angle) * 0.35;
-      rightFlipper.angle += (rightFlipper.targetAngle - rightFlipper.angle) * 0.35;
+      // Flipper animation
+      leftFlipper.angle += (leftFlipper.targetAngle - leftFlipper.angle) * 0.42;
+      rightFlipper.angle += (rightFlipper.targetAngle - rightFlipper.angle) * 0.42;
 
-      if (!ballLaunched) return;
+      if (ballSaveTimer > 0) ballSaveTimer--;
+      else ballSave = false;
 
-      ball.vy += gravity;
-      ball.vx *= friction;
-      ball.vy *= friction;
-      ball.x += ball.vx;
-      ball.y += ball.vy;
+      balls.forEach((ball, index) => {
+        if (!ball.launched) return;
 
-      if (ball.x < ball.radius + 8) { ball.x = ball.radius + 8; ball.vx *= -bounce; }
-      if (ball.x > 400 - ball.radius - 8) { ball.x = 400 - ball.radius - 8; ball.vx *= -bounce; }
-      if (ball.y < ball.radius + 8) { ball.y = ball.radius + 8; ball.vy *= -bounce; }
-      if (ball.y > 620) { loseLife(); return; }
+        ball.vy += gravity;
+        ball.vx *= friction;
+        ball.vy *= friction;
+        ball.x += ball.vx;
+        ball.y += ball.vy;
 
-      for (const b of bumpers) checkBumperCollision(b);
-      checkFlipper(leftFlipper, true);
-      checkFlipper(rightFlipper, false);
+        // Walls
+        if (ball.x < ball.radius + 8) { ball.x = ball.radius + 8; ball.vx *= -bounce; }
+        if (ball.x > 400 - ball.radius - 8) { ball.x = 400 - ball.radius - 8; ball.vx *= -bounce; }
+        if (ball.y < ball.radius + 8) { ball.y = ball.radius + 8; ball.vy *= -bounce; }
+
+        // Drain
+        if (ball.y > 630) {
+          if (balls.length > 1) {
+            balls.splice(index, 1); // remove this ball only
+          } else {
+            loseLife();
+          }
+          return;
+        }
+
+        bumpers.forEach(b => checkBumper(b, ball));
+        checkFlipper(leftFlipper, true, ball);
+        checkFlipper(rightFlipper, false, ball);
+        checkTargets(ball);
+      });
+
+      // Bumper flash decay
+      bumpers.forEach(b => { if (b.flash > 0) b.flash--; });
     }
 
     function draw() {
@@ -260,72 +358,91 @@
       ctx.fillRect(0, 0, 400, 600);
 
       // Stars
-      ctx.fillStyle = '#ffffff';
-      for (const s of stars) {
-        ctx.globalAlpha = 0.4 + Math.sin(Date.now()/700 + s.x) * 0.3;
+      ctx.fillStyle = '#fff';
+      stars.forEach(s => {
+        ctx.globalAlpha = 0.35 + Math.sin(Date.now()/800 + s.x) * 0.25;
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.s, 0, Math.PI*2);
         ctx.fill();
-      }
+      });
       ctx.globalAlpha = 1;
 
-      // Walls
+      // Side walls
       ctx.strokeStyle = '#1a3a6a';
-      ctx.lineWidth = 14;
+      ctx.lineWidth = 12;
       ctx.beginPath();
-      ctx.moveTo(6, 0); ctx.lineTo(6, 600);
-      ctx.moveTo(394, 0); ctx.lineTo(394, 600);
+      ctx.moveTo(5, 0); ctx.lineTo(5, 600);
+      ctx.moveTo(395, 0); ctx.lineTo(395, 600);
       ctx.stroke();
 
+      // Drop targets
+      targets.forEach(t => {
+        ctx.fillStyle = t.hit ? '#333' : '#0f8';
+        ctx.fillRect(t.x, t.y, t.w, t.h);
+        ctx.strokeStyle = '#0ff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(t.x, t.y, t.w, t.h);
+      });
+
       // Bumpers
-      for (const b of bumpers) {
-        const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r*1.6);
+      bumpers.forEach(b => {
+        const glow = b.flash > 0 ? 1.8 : 1.3;
+        const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * glow);
         grad.addColorStop(0, b.color);
         grad.addColorStop(1, 'transparent');
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(b.x, b.y, b.r*1.6, 0, Math.PI*2);
+        ctx.arc(b.x, b.y, b.r * glow, 0, Math.PI*2);
         ctx.fill();
 
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
-        ctx.fillStyle = b.color;
+        ctx.fillStyle = b.flash > 0 ? '#fff' : b.color;
         ctx.fill();
-      }
+      });
 
       // Flippers
       function drawFlipper(f, isLeft) {
         ctx.save();
         ctx.translate(f.x, f.y);
         ctx.rotate(f.angle);
-        ctx.fillStyle = '#4af';
+        ctx.fillStyle = '#4bf';
         ctx.shadowColor = '#0ff';
-        ctx.shadowBlur = 12;
-        ctx.fillRect(isLeft ? 0 : -f.length, -7, f.length, 14);
+        ctx.shadowBlur = 14;
+        ctx.fillRect(isLeft ? 0 : -f.length, -8, f.length, 16);
         ctx.shadowBlur = 0;
         ctx.restore();
       }
       drawFlipper(leftFlipper, true);
       drawFlipper(rightFlipper, false);
 
-      // Ball
-      if (ballLaunched || !gameOver) {
+      // Balls
+      balls.forEach(ball => {
+        if (!ball.launched && gameOver) return;
         const grad = ctx.createRadialGradient(ball.x-3, ball.y-3, 0, ball.x, ball.y, ball.radius);
         grad.addColorStop(0, '#fff');
-        grad.addColorStop(0.4, '#ffcc66');
-        grad.addColorStop(1, '#cc6600');
+        grad.addColorStop(0.45, '#ffcc55');
+        grad.addColorStop(1, '#cc5500');
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2);
         ctx.fillStyle = grad;
         ctx.fill();
+      });
+
+      // Ball save indicator
+      if (ballSave && ballSaveTimer > 0) {
+        ctx.fillStyle = 'rgba(0,255,150,0.7)';
+        ctx.font = '13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('BALL SAVE', 200, 580);
       }
 
-      // Launch text
-      if (!ballLaunched && !gameOver) {
-        ctx.fillStyle = 'rgba(100,200,255,0.8)';
+      // Launch prompt
+      if (!balls[0].launched && !gameOver) {
+        ctx.fillStyle = 'rgba(100,200,255,0.85)';
         ctx.font = '15px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('TAP CENTER TO LAUNCH', 200, 480);
+        ctx.fillText('TAP CENTER TO LAUNCH', 200, 475);
       }
     }
 
@@ -337,14 +454,14 @@
 
     function setLeft(active) {
       leftFlipper.active = active;
-      leftFlipper.targetAngle = active ? -0.5 : 0.4;
+      leftFlipper.targetAngle = active ? -0.55 : 0.45;
     }
     function setRight(active) {
       rightFlipper.active = active;
-      rightFlipper.targetAngle = active ? 0.5 : -0.4;
+      rightFlipper.targetAngle = active ? 0.55 : -0.45;
     }
 
-    // Keyboard
+    // Controls
     document.addEventListener('keydown', e => {
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') setLeft(true);
       if (e.code === 'ArrowRight' || e.code === 'KeyD') setRight(true);
@@ -355,42 +472,34 @@
       if (e.code === 'ArrowRight' || e.code === 'KeyD') setRight(false);
     });
 
-    // Touch
     canvas.addEventListener('touchstart', e => {
       e.preventDefault();
       if (gameOver) return;
       const rect = canvas.getBoundingClientRect();
       const x = (e.touches[0].clientX - rect.left) * (400 / rect.width);
-      if (!ballLaunched) { launchBall(); return; }
+      if (!balls[0].launched) { launchBall(); return; }
       if (x < 200) setLeft(true);
       else setRight(true);
-    });
+    }, {passive: false});
+
     canvas.addEventListener('touchend', e => {
       e.preventDefault();
       setLeft(false);
       setRight(false);
-    });
+    }, {passive: false});
 
-    // Mouse
     canvas.addEventListener('mousedown', e => {
       if (gameOver) return;
       const rect = canvas.getBoundingClientRect();
       const x = (e.clientX - rect.left) * (400 / rect.width);
-      if (!ballLaunched) launchBall();
+      if (!balls[0].launched) launchBall();
       else if (x < 200) setLeft(true);
       else setRight(true);
     });
-    canvas.addEventListener('mouseup', () => {
-      setLeft(false);
-      setRight(false);
-    });
+    canvas.addEventListener('mouseup', () => { setLeft(false); setRight(false); });
 
-    // Restart button
     restartBtn.addEventListener('click', restartGame);
-    restartBtn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      restartGame();
-    });
+    restartBtn.addEventListener('touchstart', e => { e.preventDefault(); restartGame(); });
 
     loop();
   </script>
