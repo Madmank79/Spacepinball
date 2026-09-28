@@ -115,25 +115,25 @@
     let gameOver = false;
 
     // Plunger
-    let plungerY = 0;          // 0 = rest, 1 = fully pulled
+    let plungerY = 0;
     let pulling = false;
     let plungerPower = 0;
 
     // Ball
     const ball = {
       x: 378,
-      y: 520,
+      y: 510,
       vx: 0,
       vy: 0,
-      radius: 7.5,
+      radius: 7,
       active: false,
-      settled: false
+      settled: false,
+      inChute: true
     };
 
     // Pins
     const pins = [];
     function buildPins() {
-      // Main triangular field
       for (let row = 0; row < 10; row++) {
         const count = row + 1;
         const startX = 200 - (count - 1) * 16;
@@ -141,7 +141,6 @@
           pins.push({ x: startX + i * 32, y: 55 + row * 28 });
         }
       }
-      // Extra pins for better bounce
       [[70,340],[110,360],[290,350],[330,340],
        [85,410],[150,430],[250,425],[320,405],
        [60,280],[340,270],[180,300],[220,310]].forEach(p => {
@@ -150,7 +149,7 @@
     }
     buildPins();
 
-    // Half-moon scoring pockets (bottom)
+    // Half-moon pockets
     const pockets = [
       { x: 45,  points: 90,  label: '90' },
       { x: 95,  points: 125, label: '125' },
@@ -160,8 +159,8 @@
       { x: 315, points: 60,  label: '60' }
     ];
 
-    const gravity = 0.17;
-    const friction = 0.992;
+    const gravity = 0.16;
+    const friction = 0.993;
 
     function updateHigh() {
       if (score > highScore) {
@@ -173,11 +172,12 @@
 
     function resetBall() {
       ball.x = 378;
-      ball.y = 520;
+      ball.y = 510;
       ball.vx = 0;
       ball.vy = 0;
       ball.active = false;
       ball.settled = false;
+      ball.inChute = true;
       plungerY = 0;
       plungerPower = 0;
     }
@@ -186,9 +186,10 @@
       if (ball.active || gameOver || ballsLeft <= 0) return;
       ball.active = true;
       ball.settled = false;
-      const power = 10 + plungerPower * 12;
+      ball.inChute = true;
+      const power = 11 + plungerPower * 13;
       ball.vy = -power;
-      ball.vx = -1.8 - Math.random() * 0.8; // slight left drift out of the chute
+      ball.vx = 0;                 // go straight up the chute first
       ballsLeft--;
       ballsLeftEl.textContent = ballsLeft;
       plungerY = 0;
@@ -196,38 +197,38 @@
     }
 
     function checkPins() {
+      if (ball.inChute) return;   // no pin collision while in chute
+
       for (const pin of pins) {
         const dx = ball.x - pin.x;
         const dy = ball.y - pin.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 0.01) continue; // safety
         if (dist < ball.radius + 4.2) {
-          const nx = dx / dist || 0;
-          const ny = dy / dist || 0;
+          const nx = dx / dist;
+          const ny = dy / dist;
           const overlap = (ball.radius + 4.2) - dist;
           ball.x += nx * overlap;
           ball.y += ny * overlap;
           const dot = ball.vx * nx + ball.vy * ny;
-          ball.vx -= 1.85 * dot * nx;
-          ball.vy -= 1.85 * dot * ny;
-          ball.vx += (Math.random() - 0.5) * 0.9;
+          ball.vx -= 1.8 * dot * nx;
+          ball.vy -= 1.8 * dot * ny;
+          ball.vx += (Math.random() - 0.5) * 0.7;
         }
       }
     }
 
     function checkPockets() {
-      if (ball.settled || !ball.active) return;
-      if (ball.y < 490) return;
-
-      // Only when moving slowly
-      if (Math.abs(ball.vx) > 1.4 || Math.abs(ball.vy) > 1.4) return;
+      if (ball.settled || !ball.active || ball.inChute) return;
+      if (ball.y < 495) return;
+      if (Math.abs(ball.vx) > 1.5 || Math.abs(ball.vy) > 1.5) return;
 
       for (const p of pockets) {
         const cx = p.x + 22;
         const cy = 535;
         const dx = ball.x - cx;
         const dy = ball.y - cy;
-        if (Math.sqrt(dx*dx + dy*dy) < 23) {
-          // Caught in pocket
+        if (Math.sqrt(dx*dx + dy*dy) < 22) {
           ball.settled = true;
           ball.active = false;
           ball.x = cx;
@@ -239,7 +240,7 @@
           setTimeout(() => {
             if (ballsLeft > 0) resetBall();
             else endGame();
-          }, 800);
+          }, 750);
           return;
         }
       }
@@ -265,9 +266,8 @@
     function update() {
       if (gameOver) return;
 
-      // Plunger pull
       if (pulling) {
-        plungerY = Math.min(plungerY + 0.025, 1);
+        plungerY = Math.min(plungerY + 0.028, 1);
         plungerPower = plungerY;
       }
 
@@ -279,31 +279,39 @@
       ball.x += ball.vx;
       ball.y += ball.vy;
 
-      // Right wall (chute)
-      if (ball.x > 385) {
-        ball.x = 385;
-        ball.vx *= -0.5;
-      }
-      // Left wall
-      if (ball.x < 15) {
-        ball.x = 15;
-        ball.vx *= -0.7;
-      }
-      // Top
-      if (ball.y < 15) {
-        ball.y = 15;
-        ball.vy *= -0.65;
-      }
-      // Bottom floor
-      if (ball.y > 560) {
-        ball.y = 560;
-        ball.vy *= -0.4;
-        ball.vx *= 0.8;
+      // ===== STRONG CHUTE WALLS =====
+      if (ball.inChute) {
+        // Keep ball inside the right track
+        if (ball.x < 368) ball.x = 368;
+        if (ball.x > 388) ball.x = 388;
+
+        // Top of chute – release into the board
+        if (ball.y < 70) {
+          ball.inChute = false;
+          ball.vx = -2.5 - Math.random() * 1.5; // push left into the pins
+          ball.vy *= 0.7;
+        }
+      } else {
+        // Normal playfield walls
+        if (ball.x < 14) {
+          ball.x = 14;
+          ball.vx *= -0.7;
+        }
+        if (ball.x > 386) {
+          ball.x = 386;
+          ball.vx *= -0.7;
+        }
       }
 
-      // Guide the ball out of the right chute toward the top
-      if (ball.y < 500 && ball.x > 350) {
-        ball.vx -= 0.12; // gently push left as it rises
+      // Top and bottom
+      if (ball.y < 14) {
+        ball.y = 14;
+        ball.vy *= -0.6;
+      }
+      if (ball.y > 562) {
+        ball.y = 562;
+        ball.vy *= -0.35;
+        ball.vx *= 0.8;
       }
 
       checkPins();
@@ -318,7 +326,7 @@
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, 400, 580);
 
-      // Subtle wood grain
+      // Wood grain
       ctx.strokeStyle = 'rgba(0,0,0,0.1)';
       for (let y = 0; y < 580; y += 16) {
         ctx.beginPath();
@@ -335,11 +343,11 @@
       ctx.lineWidth = 9;
       ctx.stroke();
 
-      // Right launch chute
+      // Right launch chute (visual)
       ctx.fillStyle = '#2a190f';
-      ctx.fillRect(365, 80, 28, 480);
+      ctx.fillRect(365, 60, 30, 500);
       ctx.fillStyle = '#4a301a';
-      ctx.fillRect(368, 80, 22, 480);
+      ctx.fillRect(369, 60, 22, 500);
 
       // Pins
       pins.forEach(pin => {
@@ -369,31 +377,29 @@
       });
 
       // Plunger
-      const plungerDrawY = 530 + plungerY * 40;
-      ctx.fillStyle = '#888';
-      ctx.fillRect(372, plungerDrawY, 14, 35);
-      ctx.fillStyle = '#ccc';
-      ctx.fillRect(374, plungerDrawY, 10, 8);
+      const plungerDrawY = 520 + plungerY * 45;
+      ctx.fillStyle = '#999';
+      ctx.fillRect(373, plungerDrawY, 14, 38);
+      ctx.fillStyle = '#ddd';
+      ctx.fillRect(375, plungerDrawY, 10, 9);
 
-      // Pull instruction
+      // Instruction
       if (!ball.active && !gameOver) {
-        ctx.fillStyle = 'rgba(240,217,160,0.8)';
+        ctx.fillStyle = 'rgba(240,217,160,0.85)';
         ctx.font = '13px sans-serif';
         ctx.textAlign = 'right';
         ctx.fillText(pulling ? 'RELEASE!' : 'PULL PLUNGER →', 360, 555);
       }
 
       // Ball
-      if (ball.active || !ball.settled || !gameOver) {
-        const bg = ctx.createRadialGradient(ball.x-2, ball.y-2, 0, ball.x, ball.y, ball.radius);
-        bg.addColorStop(0, '#fff');
-        bg.addColorStop(0.5, '#ddd');
-        bg.addColorStop(1, '#999');
-        ctx.beginPath();
-        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-        ctx.fillStyle = bg;
-        ctx.fill();
-      }
+      const bg = ctx.createRadialGradient(ball.x-2, ball.y-2, 0, ball.x, ball.y, ball.radius);
+      bg.addColorStop(0, '#fff');
+      bg.addColorStop(0.5, '#ddd');
+      bg.addColorStop(1, '#999');
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fillStyle = bg;
+      ctx.fill();
     }
 
     function loop() {
@@ -402,12 +408,10 @@
       requestAnimationFrame(loop);
     }
 
-    // Controls – pull plunger on the right side
+    // Controls
     function startPull(x) {
       if (gameOver || ball.active) return;
-      if (x > 340) {           // only on the right side
-        pulling = true;
-      }
+      if (x > 340) pulling = true;
     }
     function endPull() {
       if (pulling) {
@@ -435,10 +439,9 @@
     });
     canvas.addEventListener('mouseup', endPull);
 
-    // Keyboard support
     document.addEventListener('keydown', e => {
-      if (e.code === 'Space' || e.code === 'ArrowDown') {
-        if (!pulling && !ball.active) pulling = true;
+      if ((e.code === 'Space' || e.code === 'ArrowDown') && !pulling && !ball.active) {
+        pulling = true;
       }
     });
     document.addEventListener('keyup', e => {
