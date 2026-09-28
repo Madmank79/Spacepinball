@@ -19,64 +19,72 @@
       touch-action: none;
     }
     h1 {
-      font-size: 1.8rem;
-      margin-bottom: 8px;
+      font-size: 1.6rem;
+      margin-bottom: 6px;
       background: linear-gradient(90deg, #7af, #f7a, #7af);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      text-shadow: 0 0 20px rgba(100,180,255,0.4);
     }
     #ui {
       display: flex;
-      gap: 30px;
-      margin-bottom: 12px;
-      font-size: 1.2rem;
+      gap: 24px;
+      margin-bottom: 10px;
+      font-size: 1.15rem;
       font-weight: 600;
     }
     #game-container {
       position: relative;
       border: 3px solid #3a5a9a;
       border-radius: 12px;
-      box-shadow: 0 0 40px rgba(80,140,255,0.3), inset 0 0 60px rgba(0,30,80,0.6);
+      box-shadow: 0 0 40px rgba(80,140,255,0.3);
       background: #020208;
     }
     canvas {
       display: block;
       border-radius: 9px;
     }
-    #message {
+    #overlay {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 1.8rem;
-      font-weight: bold;
-      text-align: center;
-      text-shadow: 0 0 15px #0ff;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.3s;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.75);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9px;
+      z-index: 10;
     }
-    #message.show { opacity: 1; }
-    .controls {
-      margin-top: 16px;
-      text-align: center;
-      color: #8af;
-      font-size: 0.95rem;
+    #overlay.show {
+      display: flex;
+    }
+    #overlay h2 {
+      font-size: 1.8rem;
+      margin-bottom: 8px;
+      color: #ff6b6b;
+    }
+    #overlay p {
+      font-size: 1.2rem;
+      margin-bottom: 20px;
+      color: #aef;
     }
     .btn {
-      margin-top: 14px;
-      padding: 10px 28px;
-      font-size: 1.1rem;
+      padding: 14px 36px;
+      font-size: 1.2rem;
       background: linear-gradient(90deg, #2060c0, #40a0ff);
       border: none;
-      border-radius: 30px;
+      border-radius: 40px;
       color: white;
       cursor: pointer;
-      box-shadow: 0 0 20px rgba(60,140,255,0.5);
-      transition: transform 0.15s;
+      box-shadow: 0 0 25px rgba(60,140,255,0.6);
+      font-weight: 600;
     }
     .btn:active { transform: scale(0.96); }
+    .controls {
+      margin-top: 12px;
+      text-align: center;
+      color: #8af;
+      font-size: 0.9rem;
+    }
   </style>
 </head>
 <body>
@@ -88,21 +96,26 @@
 
   <div id="game-container">
     <canvas id="canvas" width="400" height="600"></canvas>
-    <div id="message"></div>
+
+    <!-- Game Over Overlay -->
+    <div id="overlay">
+      <h2>💥 ASTEROID LOST</h2>
+      <p>Final Score: <span id="finalScore">0</span></p>
+      <button class="btn" id="restartBtn">Play Again</button>
+    </div>
   </div>
 
   <div class="controls">
-    ← → or A D or tap sides to flip<br>
-    Space / Tap center to launch
+    Tap sides to flip • Tap center to launch
   </div>
-  <button class="btn" id="restartBtn" style="display:none">Play Again</button>
 
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const scoreEl = document.getElementById('score');
     const livesEl = document.getElementById('lives');
-    const messageEl = document.getElementById('message');
+    const overlay = document.getElementById('overlay');
+    const finalScoreEl = document.getElementById('finalScore');
     const restartBtn = document.getElementById('restartBtn');
 
     let score = 0;
@@ -110,16 +123,10 @@
     let gameOver = false;
     let ballLaunched = false;
 
-    const ball = {
-      x: 200, y: 520, vx: 0, vy: 0, radius: 9
-    };
+    const ball = { x: 200, y: 520, vx: 0, vy: 0, radius: 9 };
 
-    const leftFlipper = {
-      x: 110, y: 520, angle: 0.4, targetAngle: 0.4, length: 70, active: false
-    };
-    const rightFlipper = {
-      x: 290, y: 520, angle: -0.4, targetAngle: -0.4, length: 70, active: false
-    };
+    const leftFlipper = { x: 110, y: 520, angle: 0.4, targetAngle: 0.4, length: 70, active: false };
+    const rightFlipper = { x: 290, y: 520, angle: -0.4, targetAngle: -0.4, length: 70, active: false };
 
     const bumpers = [
       { x: 120, y: 180, r: 28, color: '#e8a838', points: 50 },
@@ -155,23 +162,26 @@
       ball.vy = -14 - Math.random() * 3;
     }
 
-    function showMessage(text, duration = 1500) {
-      messageEl.textContent = text;
-      messageEl.classList.add('show');
-      setTimeout(() => messageEl.classList.remove('show'), duration);
-    }
-
     function loseLife() {
       lives--;
       livesEl.textContent = lives;
       if (lives <= 0) {
         gameOver = true;
-        restartBtn.style.display = 'block';
-        showMessage('💥 ASTEROID LOST\nScore: ' + score, 99999);
+        finalScoreEl.textContent = score;
+        overlay.classList.add('show');
       } else {
-        showMessage('Life lost!');
         resetBall();
       }
+    }
+
+    function restartGame() {
+      score = 0;
+      lives = 3;
+      gameOver = false;
+      scoreEl.textContent = 0;
+      livesEl.textContent = 3;
+      overlay.classList.remove('show');
+      resetBall();
     }
 
     function checkBumperCollision(b) {
@@ -191,9 +201,7 @@
         ball.vy *= 1.1;
         score += b.points;
         scoreEl.textContent = score;
-        return true;
       }
-      return false;
     }
 
     function checkFlipper(f, isLeft) {
@@ -220,25 +228,28 @@
           ball.vy -= 6;
           ball.vx += isLeft ? -2 : 2;
         }
-        return true;
       }
-      return false;
     }
 
     function update() {
       if (gameOver) return;
+
       leftFlipper.angle += (leftFlipper.targetAngle - leftFlipper.angle) * 0.35;
       rightFlipper.angle += (rightFlipper.targetAngle - rightFlipper.angle) * 0.35;
+
       if (!ballLaunched) return;
+
       ball.vy += gravity;
       ball.vx *= friction;
       ball.vy *= friction;
       ball.x += ball.vx;
       ball.y += ball.vy;
+
       if (ball.x < ball.radius + 8) { ball.x = ball.radius + 8; ball.vx *= -bounce; }
       if (ball.x > 400 - ball.radius - 8) { ball.x = 400 - ball.radius - 8; ball.vx *= -bounce; }
       if (ball.y < ball.radius + 8) { ball.y = ball.radius + 8; ball.vy *= -bounce; }
       if (ball.y > 620) { loseLife(); return; }
+
       for (const b of bumpers) checkBumperCollision(b);
       checkFlipper(leftFlipper, true);
       checkFlipper(rightFlipper, false);
@@ -247,6 +258,8 @@
     function draw() {
       ctx.fillStyle = '#020208';
       ctx.fillRect(0, 0, 400, 600);
+
+      // Stars
       ctx.fillStyle = '#ffffff';
       for (const s of stars) {
         ctx.globalAlpha = 0.4 + Math.sin(Date.now()/700 + s.x) * 0.3;
@@ -255,12 +268,16 @@
         ctx.fill();
       }
       ctx.globalAlpha = 1;
+
+      // Walls
       ctx.strokeStyle = '#1a3a6a';
       ctx.lineWidth = 14;
       ctx.beginPath();
       ctx.moveTo(6, 0); ctx.lineTo(6, 600);
       ctx.moveTo(394, 0); ctx.lineTo(394, 600);
       ctx.stroke();
+
+      // Bumpers
       for (const b of bumpers) {
         const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r*1.6);
         grad.addColorStop(0, b.color);
@@ -269,27 +286,29 @@
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.r*1.6, 0, Math.PI*2);
         ctx.fill();
+
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
         ctx.fillStyle = b.color;
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
       }
+
+      // Flippers
       function drawFlipper(f, isLeft) {
         ctx.save();
         ctx.translate(f.x, f.y);
         ctx.rotate(f.angle);
         ctx.fillStyle = '#4af';
         ctx.shadowColor = '#0ff';
-        ctx.shadowBlur = 15;
+        ctx.shadowBlur = 12;
         ctx.fillRect(isLeft ? 0 : -f.length, -7, f.length, 14);
         ctx.shadowBlur = 0;
         ctx.restore();
       }
       drawFlipper(leftFlipper, true);
       drawFlipper(rightFlipper, false);
+
+      // Ball
       if (ballLaunched || !gameOver) {
         const grad = ctx.createRadialGradient(ball.x-3, ball.y-3, 0, ball.x, ball.y, ball.radius);
         grad.addColorStop(0, '#fff');
@@ -300,11 +319,13 @@
         ctx.fillStyle = grad;
         ctx.fill();
       }
+
+      // Launch text
       if (!ballLaunched && !gameOver) {
-        ctx.fillStyle = 'rgba(100,200,255,0.7)';
-        ctx.font = '16px sans-serif';
+        ctx.fillStyle = 'rgba(100,200,255,0.8)';
+        ctx.font = '15px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('PRESS SPACE / TAP TO LAUNCH', 200, 480);
+        ctx.fillText('TAP CENTER TO LAUNCH', 200, 480);
       }
     }
 
@@ -323,6 +344,7 @@
       rightFlipper.targetAngle = active ? 0.5 : -0.4;
     }
 
+    // Keyboard
     document.addEventListener('keydown', e => {
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') setLeft(true);
       if (e.code === 'ArrowRight' || e.code === 'KeyD') setRight(true);
@@ -333,34 +355,41 @@
       if (e.code === 'ArrowRight' || e.code === 'KeyD') setRight(false);
     });
 
+    // Touch
     canvas.addEventListener('touchstart', e => {
       e.preventDefault();
+      if (gameOver) return;
       const rect = canvas.getBoundingClientRect();
       const x = (e.touches[0].clientX - rect.left) * (400 / rect.width);
       if (!ballLaunched) { launchBall(); return; }
-      if (x < 200) setLeft(true); else setRight(true);
+      if (x < 200) setLeft(true);
+      else setRight(true);
     });
     canvas.addEventListener('touchend', e => {
       e.preventDefault();
-      setLeft(false); setRight(false);
+      setLeft(false);
+      setRight(false);
     });
 
+    // Mouse
     canvas.addEventListener('mousedown', e => {
+      if (gameOver) return;
       const rect = canvas.getBoundingClientRect();
       const x = (e.clientX - rect.left) * (400 / rect.width);
       if (!ballLaunched) launchBall();
-      else if (x < 200) setLeft(true); else setRight(true);
+      else if (x < 200) setLeft(true);
+      else setRight(true);
     });
     canvas.addEventListener('mouseup', () => {
-      setLeft(false); setRight(false);
+      setLeft(false);
+      setRight(false);
     });
 
-    restartBtn.addEventListener('click', () => {
-      score = 0; lives = 3; gameOver = false;
-      scoreEl.textContent = 0; livesEl.textContent = 3;
-      restartBtn.style.display = 'none';
-      messageEl.classList.remove('show');
-      resetBall();
+    // Restart button
+    restartBtn.addEventListener('click', restartGame);
+    restartBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      restartGame();
     });
 
     loop();
